@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { base } from '$app/paths';
 
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
@@ -17,7 +18,11 @@
 	let bikeImage!: HTMLImageElement;
 	let bikeImageLoaded = false;
 	const bikeScale = 0.35; // Scale down the 288x288 sprite
-	const bikeX = 150; // Fixed X position on left side
+
+	// Dynamic bike X position (responsive for portrait mode)
+	function getBikeX(): number {
+		return Math.min(150, canvas.width * 0.2);
+	}
 
 	// Bike physics
 	let bikeY = 0; // Will be set on mount
@@ -102,6 +107,50 @@
 		if (e.code === 'ArrowLeft') {
 			holdingLeft = false;
 		}
+	}
+
+	// Touch input handling
+	let touchHoldTimer: number | null = null;
+	const holdThreshold = 150; // ms to trigger backflip
+
+	function handleTouchStart(e: TouchEvent) {
+		e.preventDefault();
+
+		if (gameState === 'start') {
+			startGame();
+			return;
+		}
+		if (gameState === 'gameover') {
+			restartGame();
+			return;
+		}
+
+		// Jump immediately on tap
+		if (isOnGround) {
+			velocityY = jumpForce;
+			isOnGround = false;
+		}
+
+		// Start hold timer for backflip
+		touchHoldTimer = window.setTimeout(() => {
+			if (!isOnGround) {
+				holdingLeft = true;
+				isDoingBackflip = true;
+			}
+		}, holdThreshold);
+	}
+
+	function handleTouchEnd(e: TouchEvent) {
+		e.preventDefault();
+
+		// Clear hold timer
+		if (touchHoldTimer !== null) {
+			clearTimeout(touchHoldTimer);
+			touchHoldTimer = null;
+		}
+
+		// Stop backflip
+		holdingLeft = false;
 	}
 
 	function restartGame() {
@@ -273,7 +322,7 @@
 		const width = bikeImageLoaded ? bikeImage.width * bikeScale * 0.6 : 60;
 		const height = bikeImageLoaded ? bikeImage.height * bikeScale * 0.5 : 50;
 		return {
-			x: bikeX - width / 2,
+			x: getBikeX() - width / 2,
 			y: bikeY - height / 2,
 			width,
 			height
@@ -314,6 +363,13 @@
 		ctx.fillStyle = gradient;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+		// Responsive font sizes for portrait mode
+		const isPortrait = canvas.height > canvas.width;
+		const titleSize = isPortrait ? Math.min(48, canvas.width * 0.12) : 80;
+		const subtitleSize = isPortrait ? 16 : 24;
+		const promptSize = isPortrait ? 22 : 32;
+		const controlsSize = isPortrait ? 14 : 20;
+
 		// Animated flash effect for title
 		titleFlashTimer += 0.05;
 		const flash = Math.sin(titleFlashTimer * 3) * 0.3 + 0.7;
@@ -340,7 +396,7 @@
 
 		// Title shadow (multiple layers for glow effect)
 		ctx.textAlign = 'center';
-		ctx.font = 'bold 80px Arial';
+		ctx.font = `bold ${titleSize}px Arial`;
 
 		// Cyan glow
 		ctx.fillStyle = `rgba(0, 255, 255, ${flash * 0.5})`;
@@ -355,26 +411,32 @@
 		ctx.fillText('DIRT BIKE RACER', canvas.width / 2, canvas.height / 3);
 
 		// Subtitle
-		ctx.font = 'bold 24px Arial';
+		ctx.font = `bold ${subtitleSize}px Arial`;
 		ctx.fillStyle = '#00ffff';
-		ctx.fillText('EXTREME EDITION', canvas.width / 2, canvas.height / 3 + 50);
+		ctx.fillText('EXTREME EDITION', canvas.width / 2, canvas.height / 3 + (isPortrait ? 35 : 50));
 
-		// Flashing "Press SPACE to Start"
+		// Flashing prompt
 		const blink = Math.sin(titleFlashTimer * 5) > 0;
 		if (blink) {
-			ctx.font = 'bold 32px Arial';
+			ctx.font = `bold ${promptSize}px Arial`;
 			ctx.fillStyle = '#ffffff';
-			ctx.fillText('PRESS SPACE TO START', canvas.width / 2, canvas.height / 2 + 50);
+			const promptText = isPortrait ? 'TAP TO START' : 'PRESS SPACE TO START';
+			ctx.fillText(promptText, canvas.width / 2, canvas.height / 2 + 50);
 		}
 
 		// Controls info
-		ctx.font = '20px Arial';
+		ctx.font = `${controlsSize}px Arial`;
 		ctx.fillStyle = '#888888';
-		ctx.fillText('SPACE / UP - Jump', canvas.width / 2, canvas.height * 0.75);
-		ctx.fillText('LEFT ARROW - Backflip', canvas.width / 2, canvas.height * 0.75 + 30);
+		if (isPortrait) {
+			ctx.fillText('TAP - Jump', canvas.width / 2, canvas.height * 0.75);
+			ctx.fillText('TAP & HOLD - Backflip', canvas.width / 2, canvas.height * 0.75 + 25);
+		} else {
+			ctx.fillText('SPACE / UP - Jump', canvas.width / 2, canvas.height * 0.75);
+			ctx.fillText('LEFT ARROW - Backflip', canvas.width / 2, canvas.height * 0.75 + 30);
+		}
 
 		// High score style decoration
-		ctx.font = 'bold 18px Arial';
+		ctx.font = `bold ${controlsSize - 2}px Arial`;
 		ctx.fillStyle = '#ff00ff';
 		ctx.fillText('© 2024 ARCADE CLASSICS', canvas.width / 2, canvas.height - 40);
 	}
@@ -388,13 +450,19 @@
 		ctx.fillStyle = gradient;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+		// Responsive font sizes for portrait mode
+		const isPortrait = canvas.height > canvas.width;
+		const titleSize = isPortrait ? Math.min(48, canvas.width * 0.12) : 80;
+		const scoreSize = isPortrait ? 32 : 48;
+		const promptSize = isPortrait ? 20 : 28;
+
 		// Animated flash effect
 		titleFlashTimer += 0.05;
 		const flash = Math.sin(titleFlashTimer * 3) * 0.3 + 0.7;
 
 		// Game over text with glow effect
 		ctx.textAlign = 'center';
-		ctx.font = 'bold 80px Arial';
+		ctx.font = `bold ${titleSize}px Arial`;
 
 		// Red glow layers
 		ctx.fillStyle = `rgba(255, 0, 0, ${flash * 0.4})`;
@@ -407,7 +475,7 @@
 		ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 60);
 
 		// Score with cyan glow
-		ctx.font = 'bold 48px Arial';
+		ctx.font = `bold ${scoreSize}px Arial`;
 		ctx.fillStyle = `rgba(0, 255, 255, ${flash * 0.5})`;
 		ctx.fillText(`SCORE: ${score}`, canvas.width / 2 + 2, canvas.height / 2 + 20 + 2);
 		ctx.fillStyle = '#00ffff';
@@ -416,22 +484,24 @@
 		// Flashing restart instruction
 		const blink = Math.sin(titleFlashTimer * 5) > 0;
 		if (blink) {
-			ctx.font = 'bold 28px Arial';
+			ctx.font = `bold ${promptSize}px Arial`;
 			ctx.fillStyle = '#ffffff';
-			ctx.fillText('PRESS SPACE TO CONTINUE', canvas.width / 2, canvas.height / 2 + 100);
+			const promptText = isPortrait ? 'TAP TO CONTINUE' : 'PRESS SPACE TO CONTINUE';
+			ctx.fillText(promptText, canvas.width / 2, canvas.height / 2 + 100);
 		}
 
 		// Decorative lines
 		ctx.strokeStyle = `rgba(255, 0, 255, ${flash * 0.5})`;
 		ctx.lineWidth = 3;
 		const lineY = canvas.height / 2 + 140;
+		const lineWidth = isPortrait ? 120 : 200;
 		ctx.beginPath();
-		ctx.moveTo(canvas.width / 2 - 200, lineY);
-		ctx.lineTo(canvas.width / 2 + 200, lineY);
+		ctx.moveTo(canvas.width / 2 - lineWidth, lineY);
+		ctx.lineTo(canvas.width / 2 + lineWidth, lineY);
 		ctx.stroke();
 
 		// Insert coin style text
-		ctx.font = 'bold 16px Arial';
+		ctx.font = `bold ${isPortrait ? 12 : 16}px Arial`;
 		ctx.fillStyle = '#ff00ff';
 		ctx.fillText('INSERT COIN', canvas.width / 2, canvas.height - 60);
 	}
@@ -451,9 +521,12 @@
 	}
 
 	function drawSpeedometer() {
-		const centerX = canvas.width - 80;
-		const centerY = 80;
-		const radius = 55;
+		// Scale speedometer for portrait mode
+		const isPortrait = canvas.height > canvas.width;
+		const scale = isPortrait ? 0.7 : 1;
+		const radius = 55 * scale;
+		const centerX = canvas.width - radius - 25;
+		const centerY = radius + 25;
 
 		// Speedometer background (dark semi-circle)
 		ctx.beginPath();
@@ -661,7 +734,7 @@
 
 		// Save context, apply rotation, draw, restore
 		ctx.save();
-		ctx.translate(bikeX, bikeY);
+		ctx.translate(getBikeX(), bikeY);
 		ctx.rotate(bikeRotation);
 		ctx.drawImage(
 			bikeImage,
@@ -802,7 +875,7 @@
 
 		// Check ground/ramp collision
 		const baseGroundY = getGroundY();
-		const rampHeight = getRampHeightAtX(bikeX);
+		const rampHeight = getRampHeightAtX(getBikeX());
 		const effectiveGroundY = baseGroundY - rampHeight - getBikeHeight() / 2;
 
 		if (bikeY >= effectiveGroundY) {
@@ -834,7 +907,7 @@
 			let targetRotation: number;
 			if (rampHeight > 0) {
 				// Tilt to match ramp angle
-				const ramp = ramps.find(r => bikeX >= r.x && bikeX <= r.x + r.width);
+				const ramp = ramps.find(r => getBikeX() >= r.x && getBikeX() <= r.x + r.width);
 				if (ramp) {
 					targetRotation = -Math.atan2(ramp.height, ramp.width);
 				} else {
@@ -934,13 +1007,16 @@
 			bikeImageLoaded = true;
 			bikeY = getBikeGroundY();
 		};
-		bikeImage.src = '/dirt-bike.png';
+		bikeImage.src = `${base}/dirt-bike.png`;
 
 		resizeCanvas();
 
 		window.addEventListener('resize', resizeCanvas);
 		window.addEventListener('keydown', handleKeyDown);
 		window.addEventListener('keyup', handleKeyUp);
+		canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+		canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+		canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
 		// Start the game loop
 		gameLoop();
@@ -951,9 +1027,15 @@
 		if (animationId) {
 			cancelAnimationFrame(animationId);
 		}
+		if (touchHoldTimer !== null) {
+			clearTimeout(touchHoldTimer);
+		}
 		window.removeEventListener('resize', resizeCanvas);
 		window.removeEventListener('keydown', handleKeyDown);
 		window.removeEventListener('keyup', handleKeyUp);
+		canvas.removeEventListener('touchstart', handleTouchStart);
+		canvas.removeEventListener('touchend', handleTouchEnd);
+		canvas.removeEventListener('touchcancel', handleTouchEnd);
 	});
 </script>
 
